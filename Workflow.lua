@@ -100,7 +100,6 @@ local function has_collection_import(workflow)
     return coll_import
 end
 
-
 local output_folder_selector = dt.new_widget("file_chooser_button"){
   title = _("select output folder"),
   tooltip = _("select output folder - disabled with CI (collection import) workflow step"),
@@ -142,7 +141,7 @@ local workflow_combobox = dt.new_widget("combobox") {
 }
 
 local function load_workflows(file)
-  local mode, lastchoice, step_name, workflow_name, paper_name
+  local lastchoice, step_name, workflow_name, paper_name
   if df.check_if_file_exists(file) then
     local lines = {}
     local w = 0
@@ -220,17 +219,10 @@ if workflows_file_chooser.value ~= nil then load_workflows(workflows_file_choose
 -- EXPORT STORAGE -------------------------------------------------------------
 -------------------------------------------------------------------------------
 
--- temp export formats: jpg and tif are supported -----------------------------
+-- temp export formats: tif only is supported
 local function supported(storage, img_format)
   return (img_format.extension == "tif")
 end
-
--- export and print --------------------------------------------------
-
---local function initialize(storage, format, images, hq, data)
---
---end
-
 
 local function store(storage, image, output_fmt, output_file)
 
@@ -259,13 +251,14 @@ local function store(storage, image, output_fmt, output_file)
       step_cmd = workflow_steps[step]
       dt.print("Proceed with "..step.." on "..image.filename)
       path = df.split_filepath(output_file)
-      -- hard coded version...
+      -- hard coded steps
       if step:sub(1,2) == "GR" then
         tmp_file = path["path"]..path["basename"].."_gr."..path["filetype"]
         if df.check_if_file_exists(tmp_file) then os.remove(tmp_file) end
         run_cmd = string.format(step_cmd, output_file, tmp_file, string.format("%.2f", grain_slider.value):gsub(",","."))
       elseif step:sub(1,2) == "CI" then   -- build-in workflow step for collection import
         run_cmd = ""
+      -- configurable steps
       else
         run_cmd = string.format(step_cmd, output_file)
       end
@@ -365,15 +358,10 @@ dt.register_storage("expWF", "export workflow", store, finalize, supported, nil,
 
 -- Main
 -- Setup last choices
-pp_lastchoice = dt.preferences.read(MODULE_NAME, "pp_lastchoice", "integer")
+local pp_lastchoice = dt.preferences.read(MODULE_NAME, "pp_lastchoice", "integer")
 if pp_lastchoice == 0 then pp_lastchoice = 2 end
 paper_combobox.selected = pp_lastchoice
 grain_slider.value = tonumber(dt.preferences.read(MODULE_NAME, "gr_lastchoice", "string"))
-
--- set sliders to the last used value at startup ------------------------------
--- sigma_slider.value = dt.preferences.read(MODULE_NAME, "sigma", "float")
--- iterations_slider.value = dt.preferences.read(MODULE_NAME, "iterations", "float")
--- jpg_quality_slider.value = dt.preferences.read(MODULE_NAME, "jpg_quality", "float")
 
 -- end of script --------------------------------------------------------------
 
