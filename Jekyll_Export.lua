@@ -72,6 +72,7 @@ local GALLERY_MD = [[
 title: %s
 description: %s
 image: %s
+featured: %i
 ---
 ]]
 local GALLERY_PAGE = [[
@@ -84,7 +85,9 @@ layout: default
 local COLLECTION_PATH = "galleries"
 local GALLERIES_PATH = COLLECTION_PATH..PS.."_galleries"
 local IMAGES_PATH = "images"
-local INCLUDE_PATH = "_includes" 
+local INCLUDE_PATH = "_includes"
+local FEATURE_TAG = "perraut.net|featured"
+local DESCRIPTION_TAG = "perraut.net|description"
 
 -- check API version
 du.check_min_api_version("5.0.0", MODULE_NAME)
@@ -165,13 +168,27 @@ local function store(storage, image, output_fmt, output_file, number, total, hq,
   local f
   local err
 
-  -- Create gallery md file - take title and description of first picture (notes and description fields)
-  if (image.notes ~= "") then
+  -- Create gallery md file - take title and description of main picture (notes and description fields)
+  -- Check tags
+  local featured = 0
+  local title = ""
+  local description = ""
+  local tags = image:get_tags()
+  for key, tag in pairs(tags) do
+    if tag.name == FEATURE_TAG then featured = tonumber(image.notes:sub(1,1))
+    elseif tag.name == DESCRIPTION_TAG then
+      local t = du.split(image.description, "|")
+      title = t[1]
+      description = t[2]
+    end
+  end
+
+  if (title ~= "") then
     fname = tname..PS..GALLERIES_PATH..PS..gname..".md"
     remove_existing(fname)
     f, err = io.open(fname, "w")
     if f then
-      f:write(string.format(GALLERY_MD, image.notes, image.description, "/images/"..gname.."/"..iname..".jpg"))
+      f:write(string.format(GALLERY_MD, title, description, "/images/"..gname.."/"..iname..".jpg", featured))
       f:close()
     else
       dt.print_log("Error creating "..fname..": "..err)
@@ -181,7 +198,7 @@ local function store(storage, image, output_fmt, output_file, number, total, hq,
     remove_existing(fname)
     f, err = io.open(fname, "w")
     if f then
-      f:write(string.format(GALLERY_PAGE, image.description, gname))
+      f:write(string.format(GALLERY_PAGE, description, gname))
       f:close()
     else
       dt.print_log("Error creating "..fname..": "..err)
