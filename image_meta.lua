@@ -52,7 +52,7 @@ local function install_module()
 end
 
 local function reset_widget(event, image)
-  file_label.label = image.filename
+  if image ~= nil then file_label.label = image.filename end
 end
 
 file_label.reset_callback = reset_widget
