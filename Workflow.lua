@@ -247,6 +247,8 @@ local function store(storage, image, output_fmt, output_file)
         run_cmd = ""
       elseif step:sub(1,3) == "PPI" then -- built-in workflow step for setting PPI
         run_cmd = string.format(step_cmd, output_file, ppi, ppi, output_file)
+      elseif step:sub(1,4) == "EXIF" then -- built-in workflow step for exif transfer
+        run_cmd = string.format(step_cmd, image.path .. PS .. image.filename, output_file)
       -- configurable steps
       else
         run_cmd = string.format(step_cmd, output_file)
@@ -300,7 +302,7 @@ local function finalize(storage, image_table, data)
         new_name = image.path..PS..df.get_filename(exp_img)
         new_name = df.create_unique_filename(new_name)
 
-        -- move image to collection folder, check result, return if error
+        -- copy image to collection folder, check result, return if error
         success = df.file_copy(exp_img, new_name)
         if not success then
           dt.print(_("error copying file ")..exp_img)
@@ -320,8 +322,22 @@ local function finalize(storage, image_table, data)
         for i, tag in ipairs(tags) do
           dt.tags.attach(tag, new_image)
         end
-
       end
+
+      -- transfer metadata
+      new_image.publisher = image.publisher
+      new_image.title = image.title
+      new_image.creator = image.creator
+      new_image.rights = image.rights
+      new_image.description = image.description
+      new_image.notes = image.notes
+      new_image.rating = image.rating
+      new_image.red = image.red
+      new_image.blue = image.blue
+      new_image.green = image.green
+      new_image.yellow = image.yellow
+      new_image.purple = image.purple
+
       tname = df.sanitize_filename(output_folder_selector.value..PS..df.get_filename(exp_img))
       if df.check_if_file_exists(tname) then
         os.remove(tname)
