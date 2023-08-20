@@ -231,59 +231,55 @@ local function store(storage, image, output_fmt, output_file)
     dt.print_log("Output file: "..output_file)
     local steps = du.split(workflows[workflow_combobox.value],",")
     
-    -- get output file size for ppi calculation
-    dt.print(_("Analyze output file..."))
-    run_cmd = "identify -quiet "..output_file
-    dt.print_log("Run identify(ImageMagick) tool: "..run_cmd)
-    result = os.capture(run_cmd, true)
-    local wh = du.split(tokenize(result)[3],"x")
-    if wh[1] >= wh[2] then
-      ppi = wh[1] / (target_width / 25.4)
-    else
-      ppi = wh[2] / (target_width / 25.4)
-    end
-    ppi = ppi + 0.5 - (ppi + 0.5) % 1
-    dt.print_log("PPI identified: "..string.format("%i", ppi))
-
     -- main workflow loop
     for i, step in ipairs(steps) do
       step = step:gsub("^%s*(.-)%s*$", "%1")
       step_cmd = workflow_steps[step]
       dt.print("Proceed with "..step.." on "..image.filename)
+      dt.print_log("Proceed with "..step.." on "..image.filename)
       path = df.split_filepath(output_file)
       -- hard coded steps
-      if step:sub(1,2) == "GR" then
+      if step:sub(1,2) == "GR" then       -- built-in workflow step for generating grain
         tmp_file = path["path"]..path["basename"].."_gr."..path["filetype"]
         if df.check_if_file_exists(tmp_file) then os.remove(tmp_file) end
         run_cmd = string.format(step_cmd, output_file, tmp_file, string.format("%.2f", grain_slider.value):gsub(",","."))
-      elseif step:sub(1,2) == "CI" then   -- build-in workflow step for collection import
+      elseif step:sub(1,2) == "CI" then   -- built-in workflow step for collection import
         run_cmd = ""
+      elseif step:sub(1,3) == "PPI" then -- built-in workflow step for setting PPI
+        run_cmd = string.format(step_cmd, output_file, ppi, ppi, output_file)
       -- configurable steps
       else
         run_cmd = string.format(step_cmd, output_file)
       end
+
+      -- Execute workflow step
       if run_cmd ~= "" then
         dt.print_log(_(step..": "..run_cmd))
         result = dtsys.external_command(run_cmd)
         if result ~= 0 then
             dt.print(_("Error executing "..step.."!"))
+            if df.check_if_file_exists(output_file) then os.remove(output_file) end
             return
         end
+        -- Rest of work for (some) built-in workflow steps
         if step:sub(1,2) == "GR" then
           if df.check_if_file_exists(tmp_file) then
             if df.check_if_file_exists(output_file) then os.remove(output_file) end
             os.rename(tmp_file, output_file)
           end
+        elseif step:sub(1,4) == "SIZE" then -- built-in workflow step for getting the output file size in pixels (widthxheight)
+          local file = step_cmd:sub(step_cmd:find(">") + 2, #step_cmd - 1) -- remove last character
+          for line in io.lines(file) do
+            local wh = du.split(line,"x")
+            if wh[1] >= wh[2] then
+              ppi = wh[1] / (target_width / 25.4)
+            else
+              ppi = wh[2] / (target_width / 25.4)
+            end
+            ppi = ppi + 0.5 - (ppi + 0.5) % 1
+          end
         end
       end
-    end
-
-    -- set PPI in final file
-    run_cmd = "convert -quiet "..output_file.." -density "..string.format("%i", ppi).." "..output_file
-    dt.print_log(_("Set PPI: "..run_cmd))
-    result = dtsys.external_command(run_cmd)
-    if result ~= 0 then
-        dt.print_error(_("Error by setting PPI!"))
     end
 end
 
@@ -354,7 +350,7 @@ local storage_widget = dt.new_widget("box") {
 }
 
 -- register new storage -------------------------------------------------------
-dt.register_storage("expWF", "export workflow", store, finalize, supported, nil, storage_widget)
+dt.register_storage("expWF", "Export workflow", store, finalize, supported, nil, storage_widget)
 
 -- Main
 -- Setup last choices
