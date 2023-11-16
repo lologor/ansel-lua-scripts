@@ -175,7 +175,7 @@ local function store(storage, image, output_fmt, output_file, number, total, hq,
   local description = ""
   local tags = image:get_tags()
   for key, tag in pairs(tags) do
-    if tag.name == FEATURE_TAG then featured = tonumber(image.notes:sub(1,1))
+    if tag.name == FEATURE_TAG then featured = tonumber(image.notes:sub(1,string.len(image.notes)))
     elseif tag.name == DESCRIPTION_TAG then
       local t = du.split(image.description, "|")
       title = t[1]
