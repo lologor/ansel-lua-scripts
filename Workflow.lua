@@ -20,20 +20,18 @@
     Laurent Perraut - Export workflow 
 
     This script provides a new target storage "Export workflow".
-    Images exported will be exported with a given PPI value
-    Grain can be appleid with the excellent software created by Alasdair Newson, Bruno Galerne and Julie Delon (https://sites.google.com/site/alasdairnewson/research/film_grain_rendering)
-    If installed (on Linux and MacOS via Wine) the free NikCollection (version 1.2.11) can be instanciated following a specific Workflow
-
-  REQUIRED SOFTWARE
-    ImageMagick (convert)
+    Images exported will be exported with a given PPI value.
+    The inmage can be processed with one or more workflow steps.
+    THere are a number of pre-defined steps as well.
 
   USAGE
     * require this script from main lua file
     * from "export selected", choose "Export workflow"
     * choose a paper format optimzied for 3x2 formats
-    * choose grain size (0 -> no grain)
     * select your (NikCollection) workflow:
-      GR = Grain - with hard coded storage code
+      SIZE = Determine export size (hard coded)
+      PPI = Set ppi for the desired print size (hard coded)
+      EXIF = TRansfer EXIF data (hard coded)
       DF = Dfine
       CE = Color Efex
       SE = Silver Efex
@@ -91,13 +89,12 @@ local papers = {}
 local ppi
 
 local function has_collection_import(workflow)
-    local coll_import = false
     local steps = du.split(workflows[workflow],",")
     for i, step in ipairs(steps) do
       step = step:gsub("^%s*(.-)%s*$", "%1")
-      if step == "CI" then coll_import = true end
+      if step == "CI" then return true end
     end
-    return coll_import
+    return false
 end
 
 local output_folder_selector = dt.new_widget("file_chooser_button"){
@@ -111,22 +108,9 @@ local output_folder_selector = dt.new_widget("file_chooser_button"){
   end
   }
 
-local grain_slider = dt.new_widget("slider"){
-  label = _("grain"),
-  tooltip = _("controls the grain strength"),
-  value = tonumber(dt.preferences.read(MODULE_NAME, "gr_lastchoice", "string")),
-  soft_min = 0.0,
-  soft_max = 1.0,
-  hard_min = 0.0,
-  hard_max = 1.0,
-  step = 0.01,
-  digits = 2
-}
-
 local paper_combobox = dt.new_widget("combobox") {
     label = _("paper: "),
     changed_callback = function(self)
-      target_width = papers[self.value]
       dt.preferences.write(MODULE_NAME, "pp_lastchoice", "integer", self.selected)
     end
 }
@@ -151,7 +135,7 @@ local function load_workflows(file)
     papers = {}
     -- reset comboboxes
     if #workflow_combobox > 0 then 
-      for j = #workflow_combobox,1,-1 do workflow_combobox[j] = nil end
+      for j = #workflow_combobox,1,-1 do workflow_combobox[j] = nil end 
     end
     if #paper_combobox > 0 then 
       for j = #paper_combobox,1,-1 do paper_combobox[j] = nil end
@@ -162,8 +146,7 @@ local function load_workflows(file)
     for line in io.lines(file) do
       -- check category [steps], [workflows], ...
       if line:sub(1,1) == "[" then mode = line:sub(2,line:find("]")-1):lower()
-      elseif line:len() < 3 then
-      else
+      elseif line:len() > 2 then
         if mode == "steps" then
           step_name = du.split(du.split(line,"=")[1], ":")
           workflow_steps[step_name[1]] = du.split(line,"=")[2]
@@ -226,102 +209,92 @@ end
 
 local function store(storage, image, output_fmt, output_file)
 
-    local run_cmd, result, tmp_file, ppi, path, step_cmd
-    
-    dt.print_log("Output file: "..output_file)
-    local steps = du.split(workflows[workflow_combobox.value],",")
-    
-    -- main workflow loop
-    for i, step in ipairs(steps) do
-      step = step:gsub("^%s*(.-)%s*$", "%1")
-      step_cmd = workflow_steps[step]
-      dt.print("Proceed with "..step.." on "..image.filename)
-      dt.print_log("Proceed with "..step.." on "..image.filename)
-      path = df.split_filepath(output_file)
-      -- hard coded steps
-      if step:sub(1,2) == "GR" then       -- built-in workflow step for generating grain
-        tmp_file = path["path"]..path["basename"].."_gr."..path["filetype"]
-        if df.check_if_file_exists(tmp_file) then os.remove(tmp_file) end
-        run_cmd = string.format(step_cmd, output_file, tmp_file, string.format("%.2f", grain_slider.value):gsub(",","."))
-      elseif step:sub(1,2) == "CI" then   -- built-in workflow step for collection import
-        run_cmd = ""
-      elseif step:sub(1,3) == "PPI" then -- built-in workflow step for setting PPI
-        run_cmd = string.format(step_cmd, output_file, ppi, ppi, output_file)
-      elseif step:sub(1,4) == "EXIF" then -- built-in workflow step for exif transfer
-        run_cmd = string.format(step_cmd, image.path .. PS .. image.filename, output_file)
-      -- configurable steps
-      else
-        run_cmd = string.format(step_cmd, output_file)
-      end
+  local run_cmd, result, ppi, path, step_cmd
+  
+  dt.print_log("Output file: "..output_file)
+  local steps = du.split(workflows[workflow_combobox.value],",")
+  
+  -- main workflow loop
+  for i, step in ipairs(steps) do
+    step = step:gsub("^%s*(.-)%s*$", "%1")
+    step_cmd = workflow_steps[step]
+    dt.print("Proceed with "..step.." on "..image.filename)
+    dt.print_log("Proceed with "..step.." on "..image.filename)
+    path = df.split_filepath(output_file)
+    -- hard coded steps
+    if step:sub(1,2) == "CI" then   -- built-in workflow step for collection import
+      run_cmd = ""
+    elseif step:sub(1,3) == "PPI" then -- built-in workflow step for setting PPI
+      run_cmd = string.format(step_cmd, output_file, ppi, ppi, output_file)
+    elseif step:sub(1,4) == "EXIF" then -- built-in workflow step for exif transfer
+      run_cmd = string.format(step_cmd, image.path .. PS .. image.filename, output_file)
+    -- configurable steps
+    else
+      run_cmd = string.format(step_cmd, output_file)
+    end
 
-      -- Execute workflow step
-      if run_cmd ~= "" then
-        dt.print_log(_(step..": "..run_cmd))
-        result = dtsys.external_command(run_cmd)
-        if result ~= 0 then
-            dt.print(_("Error executing "..step.."!"))
-            if df.check_if_file_exists(output_file) then os.remove(output_file) end
-            return
-        end
-        -- Rest of work for (some) built-in workflow steps
-        if step:sub(1,2) == "GR" then
-          if df.check_if_file_exists(tmp_file) then
-            if df.check_if_file_exists(output_file) then os.remove(output_file) end
-            os.rename(tmp_file, output_file)
+    -- Execute workflow step
+    if run_cmd ~= "" then
+      dt.print_log(_(step..": "..run_cmd))
+      result = dtsys.external_command(run_cmd)
+      if result ~= 0 then
+          dt.print(_("Error executing "..step.."!"))
+          if df.check_if_file_exists(output_file) then os.remove(output_file) end
+          return
+      end
+      -- Rest of work for (some) built-in workflow steps
+      if step:sub(1,4) == "SIZE" then -- built-in workflow step for getting the output file size in pixels (widthxheight)
+        local file = step_cmd:sub(step_cmd:find(">") + 2, #step_cmd - 1) -- remove last character
+        target_width = papers[paper_combobox.value]
+        for line in io.lines(file) do
+          local wh = du.split(line,"x")
+          if wh[1] >= wh[2] then
+            ppi = wh[1] / (target_width / 25.4)
+          else
+            ppi = wh[2] / (target_width / 25.4)
           end
-        elseif step:sub(1,4) == "SIZE" then -- built-in workflow step for getting the output file size in pixels (widthxheight)
-          local file = step_cmd:sub(step_cmd:find(">") + 2, #step_cmd - 1) -- remove last character
-          for line in io.lines(file) do
-            local wh = du.split(line,"x")
-            if wh[1] >= wh[2] then
-              ppi = wh[1] / (target_width / 25.4)
-            else
-              ppi = wh[2] / (target_width / 25.4)
-            end
-            ppi = ppi + 0.5 - (ppi + 0.5) % 1
-          end
+          ppi = ppi + 0.5 - (ppi + 0.5) % 1
         end
       end
     end
+  end
 end
 
 local function finalize(storage, image_table, data)
+  -- output path variables
+  local tname, success
+  -- collection import variables
+  local new_name, new_image, tags
+  -- check workflow
+  local coll_import = has_collection_import(workflow_combobox.value)
 
-    -- output path variables
-    local tname, success
-    -- collection import variables
-    local new_name, new_image, tags
-    -- check workflow
-    local coll_import = has_collection_import(workflow_combobox.value)
-    
-    -- run through image list
-    for image, exp_img in pairs(image_table) do
-    
-      if coll_import then
-        -- create unique filename
-        new_name = image.path..PS..df.get_filename(exp_img)
-        new_name = df.create_unique_filename(new_name)
+  -- run through image list
+  for image, exp_img in pairs(image_table) do
+  
+    if coll_import then
+      -- create unique filename
+      new_name = image.path..PS..df.get_filename(exp_img)
+      new_name = df.create_unique_filename(new_name)
 
-        -- copy image to collection folder, check result, return if error
-        success = df.file_copy(exp_img, new_name)
-        if not success then
-          dt.print(_("error copying file ")..exp_img)
-          return
-        end
+      -- copy image to collection folder, check result, return if error
+      success = df.file_copy(exp_img, new_name)
+      if not success then
+        dt.print(_("error copying file ")..exp_img)
+        return
+      end
 
-        -- import in database and group
-        new_image = dt.database.import(new_name)
-        new_image:group_with(image.group_leader)
+      -- import in database and group
+      new_image = dt.database.import(new_name)
+      new_image:group_with(image.group_leader)
 
-        -- clean tags
-        tags = dt.tags.get_tags(new_image)
-        for i, tag in ipairs(tags) do
-          dt.tags.detach(tag, new_image)
-        end
-        tags = dt.tags.get_tags(image)
-        for i, tag in ipairs(tags) do
-          dt.tags.attach(tag, new_image)
-        end
+      -- clean tags
+      tags = dt.tags.get_tags(new_image)
+      for i, tag in ipairs(tags) do
+        dt.tags.detach(tag, new_image)
+      end
+      tags = dt.tags.get_tags(image)
+      for i, tag in ipairs(tags) do
+        dt.tags.attach(tag, new_image)
       end
 
       -- transfer metadata
@@ -338,30 +311,28 @@ local function finalize(storage, image_table, data)
       new_image.yellow = image.yellow
       new_image.purple = image.purple
 
+    -- just copy file to destination
+    else
       tname = df.sanitize_filename(output_folder_selector.value..PS..df.get_filename(exp_img))
       if df.check_if_file_exists(tname) then
         os.remove(tname)
       end
-      success = df.file_move(exp_img, tname)
+      success = df.file_copy(exp_img, tname)
       if not success then
-        dt.print(_("error moving file ")..tname)
+        dt.print(_("error copying file ")..tname)
         return
       end
     end
-    
-    -- register last choice
-    dt.preferences.write(MODULE_NAME, "gr_lastchoice", "string", tostring(grain_slider.value))
+  end
 end
 
 -- new widgets ----------------------------------------------------------------
-
 
 local storage_widget = dt.new_widget("box") {
   orientation = "vertical",
   workflows_file_chooser,
   output_folder_selector,
   paper_combobox,
-  grain_slider,
   workflow_combobox
 }
 
@@ -373,7 +344,6 @@ dt.register_storage("expWF", "Export workflow", store, finalize, supported, nil,
 local pp_lastchoice = dt.preferences.read(MODULE_NAME, "pp_lastchoice", "integer")
 if pp_lastchoice == 0 then pp_lastchoice = 2 end
 paper_combobox.selected = pp_lastchoice
-grain_slider.value = tonumber(dt.preferences.read(MODULE_NAME, "gr_lastchoice", "string"))
 
 -- end of script --------------------------------------------------------------
 
