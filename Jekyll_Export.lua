@@ -29,9 +29,20 @@
     * Give a name to the gallery
     * configure other export options (size, etc.)
     * export
+    * You can mark a gallery as "featured" by adding a tag "...|featured"
+      the tagged image will be the image displayed as link to the gallery
+    * You can mark a gallery as "hidden" by adding a tag "...|hidden"
+      the tagged image will be the image displayed as link to the gallery
+    * You have to transmit at list a gallery title. The corresponding image will 
+      be tagged with "...|description". I use the "description" metadata 
+      of this image in Ansel to transmit the information. The metadata should have
+      the following format:
+      Gallery title|Gallery Description|Image description
+    * When you tag an image of the gallery with the tag "...|hidden", 
+      the gallerywill not be listed / linked and can only be reached by direct link.
 
   CAVEATS
-    None
+    So far none
 
   BUGS, COMMENTS, SUGGESTIONS
     send to Laurent Perraut, laurent.perraut.lp@gmail.com
@@ -44,7 +55,6 @@ local dt =    require "darktable"
 local du =    require "lib/dtutils"
 local df =    require "lib/dtutils.file"
 local dtsys = require "lib/dtutils.system"
-local lu =    require "lpc/lpcutils"
 
 -- OS compatibility
 local OS = dt.configuration.running_os
@@ -57,7 +67,7 @@ local GALLERY_INCLUDE  = [[
   <ul class="photo-gallery">
     {%%- for image in site.%s -%%}
       <li>
-        <a href="{{ image.image_path }}" data-lightbox="roadtrip" data-title="{{ image.title }} ({{ image.model }} - ISO {{ image.iso }} - {{ image.focal_length }})">
+        <a href="{{ image.image_path }}" data-lightbox="roadtrip" data-title="{{ image.title }} - {{ image.description }} ({{ image.model }} - ISO {{ image.iso }} - {{ image.focal_length }})">
             <div class="img-container">
                 <img src="{{ image.image_path }}" alt="{{ image.title }}" /><br>
             </div>
@@ -73,6 +83,7 @@ title: %s
 description: %s
 image: %s
 featured: %i
+hidden: %i
 ---
 ]]
 local GALLERY_PAGE = [[
@@ -86,8 +97,9 @@ local COLLECTION_PATH = "galleries"
 local GALLERIES_PATH = COLLECTION_PATH..PS.."_galleries"
 local IMAGES_PATH = "images"
 local INCLUDE_PATH = "_includes"
-local FEATURE_TAG = "perraut.net|featured"
-local DESCRIPTION_TAG = "perraut.net|description"
+local FEATURE_TAG = "featured"
+local DESCRIPTION_TAG = "description"
+local HIDDEN_TAG = "hidden"
 
 -- check API version
 du.check_min_api_version("5.0.0", MODULE_NAME)
@@ -171,24 +183,32 @@ local function store(storage, image, output_fmt, output_file, number, total, hq,
   -- Create gallery md file - take title and description of main picture (notes and description fields)
   -- Check tags
   local featured = 0
-  local title = ""
-  local description = ""
+  local hidden = 0
+  local gal_title = ""
+  local gal_description = ""
+  local img_description = ""
   local tags = image:get_tags()
   for key, tag in pairs(tags) do
-    if tag.name == FEATURE_TAG then featured = tonumber(image.notes:sub(1,string.len(image.notes)))
-    elseif tag.name == DESCRIPTION_TAG then
+    if string.find(tag.name, FEATURE_TAG) then
+      featured = tonumber(image.notes:sub(1,string.len(image.notes)))
+    elseif string.find(tag.name, DESCRIPTION_TAG) then
       local t = du.split(image.description, "|")
-      title = t[1]
-      description = t[2]
+      local tsize = #t
+      if tsize >= 1 then gal_title = t[1] end
+      if tsize >= 2 then gal_description = t[2] end
+      if tsize >= 3 then img_description = t[3] end
+    elseif string.find(tag.name, HIDDEN_TAG) then
+      hidden = 1
     end
   end
 
-  if (title ~= "") then
+  -- Create gallery files if image has been tagged with "description"
+  if (gal_title ~= "") then
     fname = tname..PS..GALLERIES_PATH..PS..gname..".md"
     remove_existing(fname)
     f, err = io.open(fname, "w")
     if f then
-      f:write(string.format(GALLERY_MD, title, description, "/images/"..gname.."/"..iname..".jpg", featured))
+      f:write(string.format(GALLERY_MD, gal_title, gal_description, "/images/"..gname.."/"..iname..".jpg", featured, hidden))
       f:close()
     else
       dt.print_log("Error creating "..fname..": "..err)
@@ -198,12 +218,13 @@ local function store(storage, image, output_fmt, output_file, number, total, hq,
     remove_existing(fname)
     f, err = io.open(fname, "w")
     if f then
-      f:write(string.format(GALLERY_PAGE, description, gname))
+      f:write(string.format(GALLERY_PAGE, gal_description, gname))
       f:close()
     else
       dt.print_log("Error creating "..fname..": "..err)
     end
-
+  else
+    img_description = image.description
   end
 
   -- Create md file
@@ -212,14 +233,30 @@ local function store(storage, image, output_fmt, output_file, number, total, hq,
   dt.print_log("Create md-file: "..fname)
   f, err = io.open(fname, "w")
   if f then
+    -- Check possible "overwrite" of Exif data
+    local t = du.split(image.notes, "|")
+    local tsize = #t
+    local model = ""
+    local iso = ""
+    local focal_length = ""
+    if tsize >= 1 and t[1] == "EXIF" then
+      if tsize >= 2 then model = t[2] end
+      if tsize >= 3 then iso = t[3] end
+      if tsize >= 4 then focal_length = t[4] end
+    else
+      model = image.exif_model
+      iso = image.exif_iso
+      focal_length = image.exif_focal_length
+    end
     f:write("---\n")
     f:write("image_path: /images/"..gname.."/"..iname..".jpg\n")
     f:write("title: "..image.title.."\n")
+    f:write("description: "..img_description.."\n")
     f:write("maker: "..image.exif_maker.."\n")
-    f:write("model: "..image.exif_model.."\n")
+    f:write("model: "..model.."\n")
     f:write("lens: "..image.exif_lens.."\n")
-    f:write("focal_length: "..string.format("%dmm", image.exif_focal_length).."\n")
-    f:write("iso: "..string.format("%d", image.exif_iso).."\n")
+    f:write("focal_length: "..string.format("%dmm", focal_length).."\n")
+    f:write("iso: "..string.format("%d", iso).."\n")
     f:write("datetime: "..image.exif_datetime_taken.."\n")
     f:write("---\n")
     f:close()
