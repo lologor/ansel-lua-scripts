@@ -63,7 +63,7 @@ local PS = OS == "windows" and  "\\"  or  "/"
 -- Consts
 local MODULE_NAME   = "JekyllExport"
 local GALLERY_INCLUDE  = [[
-  <script src="{{ "/assets/lightbox-plus-jquery.min.js" | relative_url }}"></script>
+  <script src="{{ "/assets/lightbox-check.js" | relative_url }}"></script>
   <ul class="photo-gallery">
     {%%- for image in site.%s -%%}
       <li>
