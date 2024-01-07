@@ -88,7 +88,7 @@ hidden: %i
 ]]
 local GALLERY_PAGE = [[
 ---
-layout: default
+layout: gallery
 ---
 %s
 {%% include gallery-%s.html %%}
